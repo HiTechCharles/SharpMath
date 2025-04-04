@@ -318,6 +318,8 @@ namespace SharpMath
 
         static void Menu ()  //display list of math types
         {
+            Console.Title = "SharpMath by Charles Martin";
+            Console.ForegroundColor = ConsoleColor.White;  //text color for console
             Console.WriteLine("\n\nWelcome to SharpMath by Charles Martin");
             Console.WriteLine("\nWhich type of math would you like:  ");
             Console.WriteLine("     1 - Addition");
