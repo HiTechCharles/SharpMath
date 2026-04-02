@@ -1,319 +1,238 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Security.Cryptography;
+using System.IO;
+using System.Speech.Synthesis;
 
 //Sharpmath is a program for solving different kinds of math problems.
 //the number of problems and the difficulty level can be chosen.
 namespace SharpMath
-
 {
     internal class Program
     {
-        //number of problems, highest # allowed in a problem
-        public static int NumProblems, HighNum;
+        #region Variables
+        private static int NumProblems, HighNum;  //number of problems, highest # allowed in a problem
+        private static readonly Random RNG = new Random(); //random number generator
+        private static readonly Stopwatch SolveTime = new Stopwatch();  //stopwatch to time solving
+        private static bool TTS = false;  //text to speech on/off
+        private static readonly SpeechSynthesizer MathSpeak = new SpeechSynthesizer();  //text to speech engine
+        private static readonly string AppDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SharpMath"); //directory to save log file
+        private static readonly string TodayLog = Path.Combine(AppDirectory, "Last Problem Set.txt"); //log file path
+        private static readonly string FullLog = Path.Combine(AppDirectory, "Full Log.txt"); //full log file path
+        #endregion
 
-        static void Main(string[] args)   //entrypoint of program
+        static char WaitForKeyPress(string prompt)  //get a keypress and store it
         {
-            Menu();  //display math type menu
+            Console.WriteLine(prompt);
+            ConsoleKeyInfo keyInfo = Console.ReadKey(true); // Prevents the key from being displayed
+
+            // Return the character of the pressed key, lowercase
+            return char.ToLower(keyInfo.KeyChar);
         }
 
-        static int GetNumber(String Prompt)  //get a number from thee user
+        static void Main()   //entrypoint of program
         {
-            string line; int rtn = 0;  //line read and numebr returned
+            Console.Title = "SharpMath by Charles Martin";
+            Console.ForegroundColor = ConsoleColor.White;  //text color for console
+            MathSpeak.Rate = 3;  //set speech rate
+            MathSpeak.Volume = 100;  //set speech volume
 
-            Console.Write(Prompt);  //display prompt message before getting input
-
-            line = Console.ReadLine();  //store input
-
-            rtn = int.Parse(line);
-            if (rtn < 0)  //if input < 0, retry
+            try
             {
-                GetNumber(Prompt);
+                Menu();  //display math type menu
             }
-            return rtn;  //return number
+            finally
+            {
+                // ensure TTS resources are released on exit
+                try { MathSpeak.Dispose(); } catch { }
+            }
+        }
+
+        static int GetNumber(string prompt)  //get a number from the user with validation
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string line = Console.ReadLine();
+                if (int.TryParse(line, out int value))
+                {
+                    if (value >= 0) return value;
+                }
+                Console.WriteLine("Please enter a valid non-negative integer.");
+            }
         }
 
         static void SetOptions()  //get # of problems and highest #
         {
-            HighNum = GetNumber("\n\nHighest number allowed in a problem?  ");
-            NumProblems = GetNumber("How many problems to solve?  ");
+            while (true)
+            {
+                HighNum = GetNumber("\n\nHighest number allowed in a problem?  ");
+                if (HighNum >= 0) break;
+                Console.WriteLine("Highest number must be 0 or greater.");
+            }
+
+            while (true)
+            {
+                NumProblems = GetNumber("How many problems to solve?  ");
+                if (NumProblems > 0) break;
+                Console.WriteLine("Number of problems must be greater than zero.");
+            }
+
+            TTS = WaitForKeyPress("Would you like text to speech? (y/n)  ") == 'y';  //get TTS option
         }
 
         static void CorrectMessage() //prints encouragement for correct answers
         {
-            string Message = "Hungry";  //message to print
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            int MNumber = RNG.Next(1, 7); //7 messages to choose from
-
-            switch (MNumber)  //assign message based on chosen number
+            string[] Messages =
             {
-                case 1:
-                    Message = "Correct!";
-                    break;
-                case 2:
-                    Message = "Keep it up!";
-                    break;
-                case 3:
-                    Message = "You're Great!";
-                    break;
-                case 4:
-                    Message = "Good Job!";
-                    break;
-                case 5:
-                    Message = "Super Duper!";
-                    break;
-                case 6:
-                    Message = "Well Done!";
-                    break;
-                case 7:
-                    Message = "Nice work!";
-                    break;
+                "Correct!",
+                "Keep it up!",
+                "You're Great!",
+                "Good Job!",
+                "Super Duper!",
+                "Well Done!",
+                "Nice work!"
+            };
+            int MNumber = RNG.Next(0, Messages.Length); //random message index
+
+            Console.WriteLine(Messages[MNumber]);   //print the message
+
+            if (TTS)  //text to speech
+            {
+                SolveTime.Stop();  //pause timer while speaking
+                MathSpeak.SpeakAsync(Messages[MNumber] + ".");
+                SolveTime.Start();  //restart timer
             }
-            Console.WriteLine(Message);   //print the message
         }
 
-        static void IncorrectMessage()  //tells user when answer is incorrect
+        static void IncorrectMessage(int correctAnswer)  //tells user when answer is incorrect
         {
-            string Message = "Thirsty";  //everything identical to correctmessage()
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            int MNumber = RNG.Next(1, 7);
-
-            switch (MNumber)
+            string[] Messages =
             {
-                case 1:
-                    Message = "Incorrect.";
-                    break;
-                case 2:
-                    Message = "Maybe next time.";
-                    break;
-                case 3:
-                    Message = "Not Quite.";
-                    break;
-                case 4:
-                    Message = "You can do it.";
-                    break;
-                case 5:
-                    Message = "Nope!";
-                    break;
-                case 6:
-                    Message = "Almost!";
-                    break;
-                case 7:
-                    Message = "Better luck next time.";
-                    break;
+                "Incorrect.",
+                "Maybe next time.",
+                "Not Quite.",
+                "You can do it.",
+                "Nope!",
+                "Almost!",
+                "Better luck next time."
+            };
+            int MNumber = RNG.Next(0, Messages.Length); //random message index
+            Console.WriteLine(Messages[MNumber]);   //print the message
+            Console.WriteLine("The correct answer is " + correctAnswer.ToString());
+
+            if (TTS)  //text to speech
+            {
+                SolveTime.Stop();  //pause timer while speaking
+                MathSpeak.SpeakAsync(Messages[MNumber] + ".");
+                MathSpeak.SpeakAsync("The correct answer is " + correctAnswer.ToString() + ".");
+                SolveTime.Start();  //restart timer
             }
-            Console.WriteLine(Message);
         }
 
-        static void Addition()  //addition loop.  all math functions are the same except for the math type
+        static void ProblemSet(char operation)
         {
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            //2 numbers, answer, user's answer
-            int x, y, Answer, UserAnswer;
-            int C = 0, I = 0;  //correct and incorrect answers
-            Stopwatch SolveTime = new Stopwatch();  //see how long solving took 
-            TimeSpan ts;  //elapsed time
+            int correctCount = 0, incorrectCount = 0;  //correct and incorrect answers
+            int userAnswer = 0;  //user's answer
+            string opString = "";  //operation string
 
-            SolveTime.Start();  //start timer 
-            for (int CurProblem = 1; CurProblem <= NumProblems; CurProblem++)
+            SetOptions();  //get number of problems and highest number
+            SolveTime.Restart();  //reset and start timer
+
+            // preserve the original operation for reporting (so mixed doesn't get overwritten)
+            char originalOperation = operation;
+
+            for (int curProblem = 1; curProblem <= NumProblems; curProblem++)
             {
-                x = RNG.Next(0, HighNum);  //pick 2 numbers
-                y = RNG.Next(0, HighNum);
-                Answer = x + y;  //store answer to problem
+                // delegate problem generation
+                var (x, y, currentOp, spokenOp, answer) = ProblemGenerator.GenerateProblem(operation, HighNum, RNG);
+                opString = spokenOp;
 
-                if (y > x)  //make sure first number is larger
+                Console.WriteLine();  //blank line before each problem
+                Console.Write($"{x} {currentOp} {y} = ");
+
+                if (TTS)  //text to speech
                 {
-                    (x, y) = (y, x);
+                    SolveTime.Stop();  //pause timer while speaking
+                    MathSpeak.SpeakAsync($"{x} {opString} {y} equals.");
+                    SolveTime.Start();  //restart timer
                 }
 
-                //display problem and get user's answer
-                Console.WriteLine("\nProblem " + CurProblem.ToString() + " of " + NumProblems.ToString());
-                Console.WriteLine(x.ToString() + " + " + y.ToString());
-                UserAnswer = GetNumber("Answer:  ");
-                if ( UserAnswer == Answer )  //correct answer
+                userAnswer = GetNumber("");
+
+                if (userAnswer == answer)  //correct answer
                 {
                     CorrectMessage();
-                    C++;  //correct answer
+                    correctCount++;  //correct answer
                 }
                 else
                 {
-                    IncorrectMessage();
-                    Console.WriteLine("Correct answer was " + Answer.ToString());
-                    I++;  //incorrect
+                    IncorrectMessage(answer);
+                    incorrectCount++;  //incorrect
                 }
             }
-            SolveTime.Stop();  //stop timer
-            ts = SolveTime.Elapsed;  //save elapsed time
 
-            ReportCard("Addition", C, I, ts);  //displays statistics
+            SolveTime.Stop();  //stop timer
+            TimeSpan ts = SolveTime.Elapsed;  //save elapsed time
+            ReportCard(originalOperation.ToString(), correctCount, incorrectCount, ts);  //displays statistics
             Menu();  //ask for another math type
         }
 
-        static void Subtraction()
+        static void ReportCard(string mathType, int correct, int incorrect, TimeSpan ts)
         {
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            int x, y, Answer, UserAnswer;
-            int C = 0, I = 0;  //correct and incorrect answers
-            Stopwatch SolveTime = new Stopwatch();  //see how long solving took 
-            TimeSpan ts;  //elapsed time
-
-            SolveTime.Start();  //start timer 
-            for (int CurProblem = 1; CurProblem <= NumProblems; CurProblem++)
-            {
-                x = RNG.Next(0, HighNum);  //pick 2 numbers
-                y = RNG.Next(0, HighNum);
-
-                if (y > x)  //make sure first number is larger
-                {
-                    (x, y) = (y, x);
-                }
-
-                Answer = x - y;  //store answer to problem
-                //display problem and get user's answer
-                Console.WriteLine("\nProblem " + CurProblem.ToString() + " of " + NumProblems.ToString());
-                Console.WriteLine(x.ToString() + " - " + y.ToString());
-                UserAnswer = GetNumber("Answer:  ");
-                if (UserAnswer == Answer)  //correct answer
-                {
-                    CorrectMessage();
-                    C++;  //correct answer
-                }
-                else
-                {
-                    IncorrectMessage();
-                    Console.WriteLine("Correct answer was " + Answer.ToString());
-                    I++;  //incorrect
-                }
-            }
-            SolveTime.Stop();
-            ts = SolveTime.Elapsed;
-
-            ReportCard("Subtraction", C, I, ts);  //displays 
-            Menu();
-        }
-
-        static void Multiplication()
-        {
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            int x, y, Answer, UserAnswer;
-            int C = 0, I = 0;  //correct and incorrect answers
-            Stopwatch SolveTime = new Stopwatch();  //see how long solving took 
-            TimeSpan ts;  //elapsed time
-
-            SolveTime.Start();  //start timer 
-            for (int CurProblem = 1; CurProblem <= NumProblems; CurProblem++)
-            {
-                x = RNG.Next(0, HighNum);  //pick 2 numbers
-                y = RNG.Next(0, HighNum);
-
-                if (y > x)  //make sure first number is larger
-                {
-                    (x, y) = (y, x);
-                }
-
-                Answer = x * y;  //store answer to problem
-                //display problem and get user's answer
-                Console.WriteLine("\nProblem " + CurProblem.ToString() + " of " + NumProblems.ToString());
-                Console.WriteLine(x.ToString() + " * " + y.ToString());
-                UserAnswer = GetNumber("Answer:  ");
-                if (UserAnswer == Answer)  //correct answer
-                {
-                    CorrectMessage();
-                    C++;  //correct answer
-                }
-                else
-                {
-                    IncorrectMessage();
-                    Console.WriteLine("Correct answer was " + Answer.ToString());
-                    I++;  //incorrect
-                }
-            }
-            SolveTime.Stop();
-            ts = SolveTime.Elapsed;
-
-            ReportCard("Multiplication", C, I, ts);  //displays 
-            Menu();
-        }
-
-        static void Mixed()
-        {
-            uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);
-            Random RNG = new Random((int)seed);  //create random number generator
-            int x, y, t, Answer=0, UserAnswer;
-            int C = 0, I = 0;  //correct and incorrect answers
-            Stopwatch SolveTime = new Stopwatch();  //see how long solving took 
-            TimeSpan ts;  //elapsed time
-
-            SolveTime.Start();  //start timer 
-            for (int CurProblem = 1; CurProblem <= NumProblems; CurProblem++)
-            {
-                x = RNG.Next(0, HighNum);  //pick 2 numbers
-                y = RNG.Next(0, HighNum);
-                    
-                if (y > x)  //make sure first number is larger
-                {
-                    (x, y) = (y, x);
-                }
-
-                t = RNG.Next(1, 3);  //pick a math type 1=+ 2=- 3=*
-                //store answer, and display problem based on math type
-                Console.WriteLine("\nProblem " + CurProblem.ToString() + " of " + NumProblems.ToString());
-                switch (t)
-                {
-                    case 1:  //addition
-                        Answer = x + y;
-                        Console.WriteLine(x.ToString() + " + " + y.ToString());
-                        break;
-                    case 2: //subtraction
-                        Answer = x - y;  
-                        Console.WriteLine(x.ToString() + " - " + y.ToString());
-                        break;
-                    case 3: //Multiplication 
-                        Answer = x * y;
-                        Console.WriteLine(x.ToString() + " * " + y.ToString());
-                        break;
-                }
-                
-                UserAnswer = GetNumber("Answer:  ");
-                if (UserAnswer == Answer)  //correct answer
-                {
-                    CorrectMessage();
-                    C++;  //correct answer
-                }
-                else
-                {
-                    IncorrectMessage();
-                    Console.WriteLine("Correct answer was " + Answer.ToString());
-                    I++;  //incorrect
-                }
-            }
-            SolveTime.Stop();
-            ts = SolveTime.Elapsed;
-
-            ReportCard("Mixed", C, I, ts);  //displays 
-            Menu();
-        }
-        
-        static void ReportCard(string MathType, int Correct, int Incorrect, TimeSpan ts)
-        {
-            int Percent = Correct * 100 / NumProblems;  //percent of correct answers
+            int percent = NumProblems > 0 ? correct * 100 / NumProblems : 0;  //percent of correct answers
+            string mathOp = "";  //math operation string
+            string todayLogContents = "";  //contents of today's log file
             string elapsedTime = String.Format("{0} Hours, {1} Minutes, {2} Seconds",
-            ts.Hours, ts.Minutes, ts.Seconds); //store elapsed time sto string
+            ts.Hours, ts.Minutes, ts.Seconds); //store elapsed time to string
 
-            Console.WriteLine("\nSharpMath Report Card");
-            Console.WriteLine("          Math Type:  " + MathType);
-            Console.WriteLine("          Highest #:  " + HighNum);
-            Console.WriteLine(" Number of Problems:  " + NumProblems);
-            Console.WriteLine("            Correct:  " + Correct);
-            Console.WriteLine("          Incorrect:  " + Incorrect);
-            Console.WriteLine("            Percent:  " + Percent);
-            Console.WriteLine("       Elapsed Time:  " + elapsedTime);
-            Console.WriteLine("Seconds per Problem:  " + (ts.TotalSeconds / NumProblems).ToString("n1"));
+            switch (mathType)  //convert math type char to string
+            {
+                case "+":
+                    mathOp = "Addition";
+                    break;
+                case "-":
+                    mathOp = "Subtraction";
+                    break;
+                case "*":
+                    mathOp = "Multiplication";
+                    break;
+                case "/":
+                    mathOp = "Division";
+                    break;
+                case "M":
+                    mathOp = "Mixed";
+                    break;
+            }
+
+            Directory.CreateDirectory(AppDirectory);  //create app directory if it doesn't exist
+
+            using (var logLines = new StreamWriter(TodayLog, false))  //open log file for writing
+            {
+                logLines.WriteLine("           Date & Time:  " + DateTime.Now.ToShortDateString() + " " + DateTime.Now.ToShortTimeString());
+                logLines.WriteLine("             Math Type:  " + mathOp);
+                logLines.WriteLine("Highest # in a Problem:  " + HighNum);
+                logLines.WriteLine("    Number of Problems:  " + NumProblems);
+                logLines.WriteLine("               Correct:  " + correct);
+                logLines.WriteLine("             Incorrect:  " + incorrect);
+                logLines.WriteLine("               Percent:  " + percent);
+                logLines.WriteLine("          Elapsed Time:  " + elapsedTime);
+                logLines.WriteLine("   Seconds per Problem:  " + (NumProblems > 0 ? (ts.TotalSeconds / NumProblems).ToString("n1") : "N/A"));
+                logLines.WriteLine();
+                logLines.WriteLine("------------------------------------");
+            }
+
+            todayLogContents = File.ReadAllText(TodayLog);  //read log file contents
+            // append to full log
+            File.AppendAllText(FullLog, todayLogContents + Environment.NewLine);
+
+            //display report card
+            Console.WriteLine(todayLogContents);
+
+            if (TTS)  //text to speech
+            {
+                MathSpeak.SpeakAsync(todayLogContents);
+            }
         }
 
         static void Menu ()  //display list of math types
@@ -322,39 +241,38 @@ namespace SharpMath
             Console.ForegroundColor = ConsoleColor.White;  //text color for console
             Console.WriteLine("\n\nWelcome to SharpMath by Charles Martin");
             Console.WriteLine("\nWhich type of math would you like:  ");
-            Console.WriteLine("     1 - Addition");
-            Console.WriteLine("     2 - Subtraction");
-            Console.WriteLine("     3 - Multiplication");
-            Console.WriteLine("     4 - Mixed");
-            Console.WriteLine("     0 - Exit");
-            int MenuItem=GetNumber("Your Choice:  ");
+            Console.WriteLine("     A - Addition");
+            Console.WriteLine("     S - Subtraction");
+            Console.WriteLine("     M - Multiplication");
+            Console.WriteLine("     D - Division");
+            Console.WriteLine("     E - Mixed");
+            Console.WriteLine("     X - Exit");
+            char MenuItem = WaitForKeyPress("Choose an option: ");
 
-            switch (MenuItem)  //run fuctions based on numbers above
+            switch (MenuItem)  //run functions based on numbers above
             {
-                case 0:  //exit
+                case 'x':  //exit
                     Environment.Exit(0);
                     break;
-                case 1:   //add
-                    SetOptions();
-                    Addition();
+                case 'a':   //add
+                    ProblemSet('+');
                     break;
-                case 2:  //subtraction
-                    SetOptions();
-                    Subtraction();
+                case 's':  //subtraction
+                    ProblemSet('-');
                     break;
-                case 3:  //multiplication
-                    SetOptions();
-                    Multiplication();
+                case 'm':  //multiplication
+                    ProblemSet('*');
                     break;
-                case 4:  //mixed ( all three types)
-                    SetOptions();
-                    Mixed();
+                case 'e':  //mixed ( all three types)
+                    ProblemSet('M');
+                    break;
+                case 'd':  //division
+                    ProblemSet('/');
                     break;
                  default:  //other answers, exit
                     Environment.Exit(0);
                     break;
             }
         }
-    
-    }  //end class
+    }  //end  class
 }  //end namespace
