@@ -235,7 +235,7 @@ namespace SharpMath
             }
         }
 
-        static void Menu ()  //display list of math types
+        static void Menu()  //display list of math types
         {
             Console.Title = "SharpMath by Charles Martin";
             Console.ForegroundColor = ConsoleColor.White;  //text color for console
@@ -269,7 +269,7 @@ namespace SharpMath
                 case 'd':  //division
                     ProblemSet('/');
                     break;
-                 default:  //other answers, exit
+                default:  //other answers, exit
                     Environment.Exit(0);
                     break;
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace SharpMath
 {
@@ -22,7 +22,7 @@ namespace SharpMath
         {
             if (rng == null)
             {
-                throw new ArgumentNullException(nameof(rng));
+                throw new ArgumentNullException();
             }
 
             char currentOp = DetermineOperation(operation, rng);
