@@ -73,12 +73,12 @@ namespace SharpMath
             int x = rng.Next(0, highNum + 1);
             int y = rng.Next(0, highNum + 1);
 
-            // For subtraction, ensure x >= y to avoid negative results
-            if (operation == '-' && y > x)
+            //always have larger number first for subtraction and division to avoid negative results or fractions
+
+            if (x < y)
             {
                 return (y, x);
             }
-
             return (x, y);
         }
 

@@ -1,21 +1,25 @@
 ﻿using System;
+using ShadowFlame;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Speech.Synthesis;
 
+
 //Sharpmath is a program for solving different kinds of math problems.
 //the number of problems and the difficulty level can be chosen.
 namespace SharpMath
 {
-    internal class Program
+    internal class SharpMath
     {
         #region Variables
         private static int NumProblems, HighNum;  //number of problems, highest # allowed in a problem
         private static readonly Random RNG = new Random(); //random number generator
         private static readonly Stopwatch SolveTime = new Stopwatch();  //stopwatch to time solving
-        private static bool TTS = false;  //text to speech on/off
-        private static readonly SpeechSynthesizer MathSpeak = new SpeechSynthesizer();  //text to speech engine
+        // Single shared TTS instance (disposable)
+        private static readonly TTS tts = new TTS();
+        private static bool UseTTS = TTS.speechEnabled;  //text to speech enabled
+
         private static readonly string AppDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SharpMath"); //directory to save log file
         private static readonly string TodayLog = Path.Combine(AppDirectory, "Last Problem Set.txt"); //log file path
         private static readonly string FullLog = Path.Combine(AppDirectory, "Full Log.txt"); //full log file path
@@ -23,10 +27,11 @@ namespace SharpMath
 
         static char WaitForKeyPress(string prompt)  //get a keypress and store it
         {
-            Console.WriteLine(prompt);
+            tts.SpeakAndDisplay(prompt);
             ConsoleKeyInfo keyInfo = Console.ReadKey(true); // Prevents the key from being displayed
 
             // Return the character of the pressed key, lowercase
+            tts.Stop();  //stop any ongoing speech
             return char.ToLower(keyInfo.KeyChar);
         }
 
@@ -34,17 +39,16 @@ namespace SharpMath
         {
             Console.Title = "SharpMath by Charles Martin";
             Console.ForegroundColor = ConsoleColor.White;  //text color for console
-            MathSpeak.Rate = 3;  //set speech rate
-            MathSpeak.Volume = 100;  //set speech volume
 
             try
             {
+                tts.SpeakAndDisplay("");
                 Menu();  //display math type menu
             }
             finally
             {
                 // ensure TTS resources are released on exit
-                try { MathSpeak.Dispose(); } catch { }
+                try { tts.Dispose(); } catch { }
             }
         }
 
@@ -52,13 +56,13 @@ namespace SharpMath
         {
             while (true)
             {
-                Console.Write(prompt);
+                tts.SpeakAndDisplay(prompt, true);
                 string line = Console.ReadLine();
                 if (int.TryParse(line, out int value))
                 {
                     if (value >= 0) return value;
                 }
-                Console.WriteLine("Please enter a valid non-negative integer.");
+                tts.SpeakAndDisplay("Please enter a valid non-negative integer.");
             }
         }
 
@@ -68,20 +72,19 @@ namespace SharpMath
             {
                 HighNum = GetNumber("\n\nHighest number allowed in a problem?  ");
                 if (HighNum >= 0) break;
-                Console.WriteLine("Highest number must be 0 or greater.");
+                tts.SpeakAndDisplay("Highest number must be 0 or greater.");
             }
 
             while (true)
             {
                 NumProblems = GetNumber("How many problems to solve?  ");
                 if (NumProblems > 0) break;
-                Console.WriteLine("Number of problems must be greater than zero.");
+                tts.SpeakAndDisplay("Number of problems must be greater than zero.");
             }
-
-            TTS = WaitForKeyPress("Would you like text to speech? (y/n)  ") == 'y';  //get TTS option
+            
         }
 
-        static void CorrectMessage() //prints encouragement for correct answers
+        static string CorrectMessage() //prints encouragement for correct answers
         {
             string[] Messages =
             {
@@ -94,18 +97,10 @@ namespace SharpMath
                 "Nice work!"
             };
             int MNumber = RNG.Next(0, Messages.Length); //random message index
-
-            Console.WriteLine(Messages[MNumber]);   //print the message
-
-            if (TTS)  //text to speech
-            {
-                SolveTime.Stop();  //pause timer while speaking
-                MathSpeak.SpeakAsync(Messages[MNumber] + ".");
-                SolveTime.Start();  //restart timer
-            }
+            return Messages[MNumber];
         }
 
-        static void IncorrectMessage(int correctAnswer)  //tells user when answer is incorrect
+        static string IncorrectMessage(int correctAnswer)  //tells user when answer is incorrect
         {
             string[] Messages =
             {
@@ -118,16 +113,7 @@ namespace SharpMath
                 "Better luck next time."
             };
             int MNumber = RNG.Next(0, Messages.Length); //random message index
-            Console.WriteLine(Messages[MNumber]);   //print the message
-            Console.WriteLine("The correct answer is " + correctAnswer.ToString());
-
-            if (TTS)  //text to speech
-            {
-                SolveTime.Stop();  //pause timer while speaking
-                MathSpeak.SpeakAsync(Messages[MNumber] + ".");
-                MathSpeak.SpeakAsync("The correct answer is " + correctAnswer.ToString() + ".");
-                SolveTime.Start();  //restart timer
-            }
+            return Messages[MNumber] + $" The correct answer was {correctAnswer}.";
         }
 
         static void ProblemSet(char operation)
@@ -148,13 +134,13 @@ namespace SharpMath
                 var (x, y, currentOp, spokenOp, answer) = ProblemGenerator.GenerateProblem(operation, HighNum, RNG);
                 opString = spokenOp;
 
-                Console.WriteLine();  //blank line before each problem
+                tts.SpeakAndDisplay();  //blank line before each problem
                 Console.Write($"{x} {currentOp} {y} = ");
 
-                if (TTS)  //text to speech
+                if (UseTTS)  //text to speech
                 {
                     SolveTime.Stop();  //pause timer while speaking
-                    MathSpeak.SpeakAsync($"{x} {opString} {y} equals.");
+                    tts.Speak($"{x} {opString} {y} equals.");
                     SolveTime.Start();  //restart timer
                 }
 
@@ -162,12 +148,12 @@ namespace SharpMath
 
                 if (userAnswer == answer)  //correct answer
                 {
-                    CorrectMessage();
+                    tts.SpeakAndDisplay(CorrectMessage());
                     correctCount++;  //correct answer
                 }
                 else
                 {
-                    IncorrectMessage(answer);
+                    tts.SpeakAndDisplay(IncorrectMessage(answer));
                     incorrectCount++;  //incorrect
                 }
             }
@@ -181,6 +167,7 @@ namespace SharpMath
         static void ReportCard(string mathType, int correct, int incorrect, TimeSpan ts)
         {
             int percent = NumProblems > 0 ? correct * 100 / NumProblems : 0;  //percent of correct answers
+            string username = Environment.UserName;  //get username
             string mathOp = "";  //math operation string
             string todayLogContents = "";  //contents of today's log file
             string elapsedTime = String.Format("{0} Hours, {1} Minutes, {2} Seconds",
@@ -210,6 +197,7 @@ namespace SharpMath
             using (var logLines = new StreamWriter(TodayLog, false))  //open log file for writing
             {
                 logLines.WriteLine("           Date & Time:  " + DateTime.Now.ToShortDateString() + " " + DateTime.Now.ToShortTimeString());
+                logLines.WriteLine("                  User:  " + username);
                 logLines.WriteLine("             Math Type:  " + mathOp);
                 logLines.WriteLine("Highest # in a Problem:  " + HighNum);
                 logLines.WriteLine("    Number of Problems:  " + NumProblems);
@@ -227,26 +215,19 @@ namespace SharpMath
             File.AppendAllText(FullLog, todayLogContents + Environment.NewLine);
 
             //display report card
-            Console.WriteLine(todayLogContents);
-
-            if (TTS)  //text to speech
-            {
-                MathSpeak.SpeakAsync(todayLogContents);
-            }
+            tts.SpeakAndDisplay(todayLogContents);
         }
 
         static void Menu()  //display list of math types
         {
-            Console.Title = "SharpMath by Charles Martin";
-            Console.ForegroundColor = ConsoleColor.White;  //text color for console
-            Console.WriteLine("\n\nWelcome to SharpMath by Charles Martin");
-            Console.WriteLine("\nWhich type of math would you like:  ");
-            Console.WriteLine("     A - Addition");
-            Console.WriteLine("     S - Subtraction");
-            Console.WriteLine("     M - Multiplication");
-            Console.WriteLine("     D - Division");
-            Console.WriteLine("     E - Mixed");
-            Console.WriteLine("     X - Exit");
+            tts.SpeakAndDisplay("\n\nWelcome to SharpMath by Charles Martin");
+            tts.SpeakAndDisplay("\nWhich type of math would you like:  ");
+            tts.SpeakAndDisplay("     A - Addition");
+            tts.SpeakAndDisplay("     S - Subtraction");
+            tts.SpeakAndDisplay("     M - Multiplication");
+            tts.SpeakAndDisplay("     D - Division");
+            tts.SpeakAndDisplay("     E - Mixed");
+            tts.SpeakAndDisplay("     X - Exit");
             char MenuItem = WaitForKeyPress("Choose an option: ");
 
             switch (MenuItem)  //run functions based on numbers above
